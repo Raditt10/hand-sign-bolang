@@ -1,307 +1,13 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🤟 Pengenalan Bahasa Isyarat Multi-Bahasa</title>
+    <link rel="icon" href="assets/LOGO SMKN 13 BDG.JPG" type="image/jpg">
+    <title>Sign Language with Auto Word Builder</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            overflow: hidden;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-
-        .school-background {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(135deg, #2c5aa0 0%, #1e8c93 50%, #20b2aa 100%);
-            z-index: 0;
-        }
-
-        .grid-pattern {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            background-image: 
-                repeating-linear-gradient(0deg, rgba(255,255,255,0.03) 0px, transparent 1px, transparent 40px),
-                repeating-linear-gradient(90deg, rgba(255,255,255,0.03) 0px, transparent 1px, transparent 40px);
-        }
-
-        .header-bar {
-            position: fixed;
-            top: 0;
-            width: 100%;
-            height: 80px;
-            background: linear-gradient(135deg, #ff9d4d 0%, #ffb347 100%);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 30px;
-            z-index: 100;
-            border-bottom: 4px solid #ff8c00;
-        }
-
-        .header-title {
-            font-size: 28px;
-            font-weight: bold;
-            color: white;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-        }
-
-        .header-info {
-            display: flex;
-            gap: 20px;
-            align-items: center;
-        }
-
-        .info-badge {
-            background: rgba(255,255,255,0.9);
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-weight: bold;
-            color: #2c5aa0;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-        }
-
-        .footer-bar {
-            position: fixed;
-            bottom: 0;
-            width: 100%;
-            height: 60px;
-            background: linear-gradient(135deg, #32b4ff 0%, #4d9fff 100%);
-            box-shadow: 0 -4px 15px rgba(0,0,0,0.3);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 30px;
-            z-index: 100;
-            border-top: 4px solid #1e90ff;
-        }
-
-        .control-btn {
-            background: rgba(255,255,255,0.9);
-            border: none;
-            padding: 10px 25px;
-            border-radius: 25px;
-            font-weight: bold;
-            color: #2c5aa0;
-            cursor: pointer;
-            transition: all 0.3s;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-            font-size: 14px;
-        }
-
-        .control-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            background: white;
-        }
-
-        .container {
-            position: relative;
-            z-index: 10;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            padding: 100px 20px 80px;
-        }
-
-        .video-container {
-            position: relative;
-            border-radius: 20px;
-            overflow: hidden;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.4);
-            border: 5px solid rgba(255,255,255,0.3);
-        }
-
-        #videoElement {
-            display: block;
-            width: 100%;
-            max-width: 960px;
-            height: auto;
-            transform: scaleX(-1);
-        }
-
-        .canvas-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            transform: scaleX(-1);
-        }
-
-        .detection-panel {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            right: 20px;
-            background: rgba(0,0,0,0.75);
-            backdrop-filter: blur(10px);
-            border-radius: 15px;
-            padding: 20px;
-            color: white;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-            border: 2px solid rgba(255,255,255,0.2);
-        }
-
-        .detected-text {
-            font-size: 32px;
-            font-weight: bold;
-            text-align: center;
-            margin-bottom: 15px;
-            color: #00ff88;
-            text-shadow: 0 0 10px rgba(0,255,136,0.5);
-            min-height: 40px;
-        }
-
-        .finger-status {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 10px;
-            margin-top: 15px;
-        }
-
-        .finger-item {
-            text-align: center;
-            padding: 10px;
-            background: rgba(255,255,255,0.1);
-            border-radius: 10px;
-            border: 2px solid rgba(255,255,255,0.2);
-            transition: all 0.3s;
-        }
-
-        .finger-item.open {
-            background: rgba(0,255,136,0.3);
-            border-color: #00ff88;
-            box-shadow: 0 0 15px rgba(0,255,136,0.3);
-        }
-
-        .finger-item.closed {
-            background: rgba(255,68,68,0.3);
-            border-color: #ff4444;
-        }
-
-        .finger-name {
-            font-size: 12px;
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-
-        .finger-status-text {
-            font-size: 11px;
-        }
-
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.8);
-            backdrop-filter: blur(5px);
-        }
-
-        .modal-content {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            margin: 10% auto;
-            padding: 40px;
-            border-radius: 20px;
-            width: 90%;
-            max-width: 600px;
-            box-shadow: 0 10px 50px rgba(0,0,0,0.5);
-            border: 3px solid rgba(255,255,255,0.3);
-        }
-
-        .modal-title {
-            text-align: center;
-            color: white;
-            font-size: 28px;
-            margin-bottom: 30px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-        }
-
-        .language-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 15px;
-            margin-bottom: 30px;
-        }
-
-        .lang-btn {
-            background: rgba(255,255,255,0.9);
-            border: none;
-            padding: 15px;
-            border-radius: 15px;
-            cursor: pointer;
-            transition: all 0.3s;
-            font-weight: bold;
-            color: #2c5aa0;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-        }
-
-        .lang-btn:hover {
-            transform: scale(1.05);
-            background: white;
-            box-shadow: 0 6px 15px rgba(0,0,0,0.3);
-        }
-
-        .name-input {
-            width: 100%;
-            padding: 15px;
-            border-radius: 10px;
-            border: 2px solid rgba(255,255,255,0.3);
-            font-size: 16px;
-            margin-bottom: 20px;
-            background: rgba(255,255,255,0.9);
-        }
-
-        .start-btn {
-            width: 100%;
-            padding: 15px;
-            background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
-            border: none;
-            border-radius: 10px;
-            color: white;
-            font-size: 18px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.3s;
-            box-shadow: 0 4px 15px rgba(0,255,136,0.3);
-        }
-
-        .start-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0,255,136,0.4);
-        }
-
-        @media (max-width: 768px) {
-            .language-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-            
-            .header-title {
-                font-size: 18px;
-            }
-            
-            .finger-status {
-                grid-template-columns: repeat(3, 1fr);
-            }
-        }
     </style>
 </head>
 <body>
@@ -310,9 +16,11 @@
     </div>
 
     <div class="header-bar">
-        <div class="header-title">🤟 Pengenalan Bahasa Isyarat Multi-Bahasa</div>
+        <div style="display:flex; align-items:center; gap:12px;">
+            <img src="assets/LOGO SMKN 13 BDG.JPG" alt="LOGO SMKN 13 BDG" class="school-logo" onerror="this.style.display='none'">
+            <div class="header-title">🤟 Sign Language Auto Word Builder</div>
+        </div>
         <div class="header-info">
-            <div class="info-badge" id="languageDisplay">🇮🇩 Indonesia</div>
             <div class="info-badge" id="userDisplay">👤 User</div>
         </div>
     </div>
@@ -322,104 +30,459 @@
             <video id="videoElement" autoplay playsinline></video>
             <canvas id="canvasElement" class="canvas-overlay"></canvas>
             
-            <div class="detection-panel">
-                <div class="detected-text" id="detectedText">Tunjukkan gesture tangan...</div>
-                <div class="finger-status" id="fingerStatus"></div>
+            <!-- Word Predictor Box -->
+            <div class="word-box">
+                <div class="word-title">📝 Current Word</div>
+                <div class="current-word-display" id="currentWordDisplay">[typing...]</div>
+                
+                <div class="word-title" style="margin-top:15px;">💡 Predictions</div>
+                <div class="predictions-list" id="predictionsList">
+                    <div style="color:#888;font-size:13px;text-align:center;padding:10px;">Start typing...</div>
+                </div>
+            </div>
+
+            <!-- Detected Letter Box -->
+            <div class="letter-display" id="letterDisplay">
+                <div class="letter-label">DETECTED</div>
+                <div class="letter-text" id="detectedLetter">-</div>
+            </div>
+
+            <!-- Sentence Box -->
+            <div class="sentence-box">
+                <div class="sentence-title">📖 Sentence</div>
+                <div class="sentence-display" id="sentenceDisplay">[empty]</div>
             </div>
         </div>
     </div>
 
     <div class="footer-bar">
-        <button class="control-btn" onclick="changeLanguage()">🌍 Ganti Bahasa</button>
-        <button class="control-btn" onclick="toggleCamera()">📸 Pause/Resume</button>
-        <button class="control-btn" onclick="resetApp()">🔄 Reset</button>
+        <button class="control-btn" onclick="completeWord()">✅ Complete Word (Space)</button>
+        <button class="control-btn" onclick="autoComplete()">⚡ Auto-Complete (Tab)</button>
+        <button class="control-btn" onclick="deleteLetter()">⬅️ Delete Letter</button>
+        <button class="control-btn" onclick="deleteWord()">🗑️ Delete Word</button>
+        <button class="control-btn" onclick="speakSentence()">🔊 Speak (Enter)</button>
+        <button class="control-btn" onclick="clearAll()">🆑 Clear All</button>
+        <button class="control-btn" onclick="toggleCamera()">📸 Pause</button>
     </div>
 
-    <!-- Modal Pilih Bahasa -->
-    <div id="languageModal" class="modal">
+    <!-- Modal Welcome -->
+    <div id="welcomeModal" class="modal">
         <div class="modal-content">
-            <h2 class="modal-title">🌍 Pilih Bahasa & Nama</h2>
-            <div class="language-grid">
-                <button class="lang-btn" onclick="selectLanguage('id', 'Indonesia', '🇮🇩')">🇮🇩 Indonesia</button>
-                <button class="lang-btn" onclick="selectLanguage('en', 'English', '🇺🇸')">🇺🇸 English</button>
-                <button class="lang-btn" onclick="selectLanguage('ja', 'Japanese', '🇯🇵')">🇯🇵 Japanese</button>
-                <button class="lang-btn" onclick="selectLanguage('es', 'Spanish', '🇪🇸')">🇪🇸 Spanish</button>
-                <button class="lang-btn" onclick="selectLanguage('jw', 'Javanese', '🏴')">🏴 Javanese</button>
-                <button class="lang-btn" onclick="selectLanguage('su', 'Sundanese', '🏴')">🏴 Sundanese</button>
-                <button class="lang-btn" onclick="selectLanguage('it', 'Italian', '🇮🇹')">🇮🇹 Italian</button>
-                <button class="lang-btn" onclick="selectLanguage('zh-CN', 'Chinese', '🇨🇳')">🇨🇳 Chinese</button>
-                <button class="lang-btn" onclick="selectLanguage('th', 'Thai', '🇹🇭')">🇹🇭 Thai</button>
-                <button class="lang-btn" onclick="selectLanguage('ar', 'Arabic', '🇸🇦')">🇸🇦 Arabic</button>
-                <button class="lang-btn" onclick="selectLanguage('ko', 'Korean', '🇰🇷')">🇰🇷 Korean</button>
-                <button class="lang-btn" onclick="selectLanguage('hi', 'Hindi', '🇮🇳')">🇮🇳 Hindi</button>
+            <h2 class="modal-title">🤟 Welcome to Auto Word Builder!</h2>
+            <p class="modal-subtitle">Advanced Sign Language Recognition with Word Prediction & Sentence Builder</p>
+            
+            <div class="controls-info">
+                <strong>🎮 Keyboard Controls:</strong>
+                <div>• <strong>SPACE</strong>: Complete current word & add to sentence</div>
+                <div>• <strong>TAB</strong>: Auto-complete with top prediction</div>
+                <div>• <strong>1-5</strong>: Select specific prediction</div>
+                <div>• <strong>BACKSPACE</strong>: Delete last letter</div>
+                <div>• <strong>DELETE</strong>: Delete last word from sentence</div>
+                <div>• <strong>ENTER</strong>: Speak complete sentence</div>
+                <div>• <strong>C</strong>: Clear everything</div>
             </div>
-            <input type="text" id="nameInput" class="name-input" placeholder="Masukkan nama Anda..." value="Teman Hebat">
-            <button class="start-btn" onclick="startApp()">🚀 Mulai Aplikasi</button>
+            
+            <input type="text" id="nameInput" class="name-input" placeholder="Enter your name..." value="Student">
+            <button class="start-btn" onclick="startApp()">🚀 Start Learning</button>
         </div>
     </div>
 
     <script>
-        let currentLanguage = 'id';
-        let currentMode = 'indonesia';
-        let currentFlag = '🇮🇩';
-        let userName = 'Teman Hebat';
+        // ========================================
+        // 📚 Common Words Dictionary
+        // ========================================
+        const COMMON_WORDS = [
+            "HELLO", "HI", "THANKS", "THANK", "YOU", "PLEASE", "SORRY", "YES", "NO",
+            "HELP", "GOOD", "BAD", "MORNING", "AFTERNOON", "EVENING", "NIGHT",
+            "BYE", "GOODBYE", "WELCOME", "FINE", "GREAT", "NICE", "MEET",
+            "NAME", "MY", "YOUR", "IS", "ARE", "AM", "WHAT", "WHO", "WHERE",
+            "WHEN", "WHY", "HOW", "CAN", "COULD", "WOULD", "SHOULD",
+            "LOVE", "LIKE", "WANT", "NEED", "HAVE", "HAS", "DO", "DOES",
+            "GO", "COME", "SEE", "LOOK", "HEAR", "SPEAK", "TALK", "SAY",
+            "EAT", "DRINK", "SLEEP", "WORK", "PLAY", "STUDY", "LEARN",
+            "HAPPY", "SAD", "ANGRY", "TIRED", "HUNGRY", "THIRSTY",
+            "HOT", "COLD", "BIG", "SMALL", "FAST", "SLOW", "NEW", "OLD"
+        ];
+
+        // ========================================
+        // 🧠 Word Predictor Class
+        // ========================================
+        class WordPredictor {
+            constructor(dictionary) {
+                this.dictionary = dictionary.sort();
+                this.currentWord = [];
+                this.predictedWords = [];
+            }
+
+            addLetter(letter) {
+                if (/[A-Z]/.test(letter)) {
+                    this.currentWord.push(letter.toUpperCase());
+                    this.updatePredictions();
+                }
+            }
+
+            removeLetter() {
+                if (this.currentWord.length > 0) {
+                    this.currentWord.pop();
+                    this.updatePredictions();
+                }
+            }
+
+            updatePredictions() {
+                const current = this.currentWord.join('');
+                if (!current) {
+                    this.predictedWords = [];
+                    return;
+                }
+
+                // Find words that start with current letters
+                let matches = this.dictionary.filter(word => word.startsWith(current));
+
+                // If no exact matches, find similar words
+                if (matches.length === 0 && current.length > 2) {
+                    matches = this.findSimilarWords(current);
+                }
+
+                this.predictedWords = matches.slice(0, 5);
+            }
+
+            findSimilarWords(target) {
+                return this.dictionary
+                    .map(word => ({
+                        word: word,
+                        similarity: this.calculateSimilarity(target, word)
+                    }))
+                    .filter(item => item.similarity > 0.6)
+                    .sort((a, b) => b.similarity - a.similarity)
+                    .map(item => item.word)
+                    .slice(0, 5);
+            }
+
+            calculateSimilarity(s1, s2) {
+                const longer = s1.length > s2.length ? s1 : s2;
+                const shorter = s1.length > s2.length ? s2 : s1;
+                if (longer.length === 0) return 1.0;
+                return (longer.length - this.editDistance(longer, shorter)) / longer.length;
+            }
+
+            editDistance(s1, s2) {
+                const costs = [];
+                for (let i = 0; i <= s1.length; i++) {
+                    let lastValue = i;
+                    for (let j = 0; j <= s2.length; j++) {
+                        if (i === 0) {
+                            costs[j] = j;
+                        } else if (j > 0) {
+                            let newValue = costs[j - 1];
+                            if (s1.charAt(i - 1) !== s2.charAt(j - 1)) {
+                                newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
+                            }
+                            costs[j - 1] = lastValue;
+                            lastValue = newValue;
+                        }
+                    }
+                    if (i > 0) costs[s2.length] = lastValue;
+                }
+                return costs[s2.length];
+            }
+
+            getCurrentWord() {
+                return this.currentWord.join('');
+            }
+
+            getPredictions() {
+                return this.predictedWords;
+            }
+
+            completeWord(word = null) {
+                if (word) {
+                    this.currentWord = word.split('');
+                } else if (this.predictedWords.length > 0) {
+                    this.currentWord = this.predictedWords[0].split('');
+                }
+                this.updatePredictions();
+                return this.getCurrentWord();
+            }
+
+            clear() {
+                this.currentWord = [];
+                this.predictedWords = [];
+            }
+        }
+
+        // ========================================
+        // 📝 Sentence Builder Class
+        // ========================================
+        class SentenceBuilder {
+            constructor() {
+                this.words = [];
+                this.currentSentence = "";
+            }
+
+            addWord(word) {
+                if (word.trim()) {
+                    this.words.push(word.toUpperCase());
+                    this.buildSentence();
+                }
+            }
+
+            buildSentence() {
+                if (this.words.length === 0) {
+                    this.currentSentence = "";
+                    return;
+                }
+
+                let sentence = this.words.join(' ');
+                sentence = sentence.charAt(0) + sentence.slice(1).toLowerCase();
+
+                const lastWord = this.words[this.words.length - 1].toUpperCase();
+                const questionWords = ["WHAT", "WHO", "WHERE", "WHEN", "WHY", "HOW", "CAN", "COULD", "WOULD", "SHOULD"];
+                
+                if (questionWords.includes(this.words[0].toUpperCase())) {
+                    if (!sentence.endsWith('?')) sentence += '?';
+                } else if (["HELLO", "HI", "BYE", "GOODBYE", "THANKS", "SORRY"].includes(lastWord)) {
+                    if (!sentence.endsWith('!')) sentence += '!';
+                } else {
+                    if (!sentence.endsWith('.')) sentence += '.';
+                }
+
+                this.currentSentence = sentence;
+            }
+
+            getSentence() {
+                return this.currentSentence;
+            }
+
+            removeLastWord() {
+                if (this.words.length > 0) {
+                    this.words.pop();
+                    this.buildSentence();
+                }
+            }
+
+            clear() {
+                this.words = [];
+                this.currentSentence = "";
+            }
+        }
+
+        // ========================================
+        // 🎯 Global Variables
+        // ========================================
+        let userName = 'Student';
         let hands;
         let camera;
-        let lastText = '';
+        let lastLetter = '';
+        let lastDetectedLetter = '';
+        let letterConfirmTime = 0;
+        let letterConfirmDuration = 1500;
         let lastSpeakTime = 0;
         let isPaused = false;
 
-        const fingerNames = ['Jempol', 'Telunjuk', 'Tengah', 'Manis', 'Kelingking'];
+        const wordPredictor = new WordPredictor(COMMON_WORDS);
+        const sentenceBuilder = new SentenceBuilder();
 
-        // Tampilkan modal saat load
+        // ========================================
+        // 🚀 Initialization
+        // ========================================
         window.onload = function() {
-            document.getElementById('languageModal').style.display = 'block';
+            document.getElementById('welcomeModal').style.display = 'block';
+            setupKeyboardControls();
         };
 
-        function selectLanguage(lang, mode, flag) {
-            currentLanguage = lang;
-            currentMode = mode.toLowerCase();
-            currentFlag = flag;
-            document.querySelectorAll('.lang-btn').forEach(btn => {
-                btn.style.background = 'rgba(255,255,255,0.9)';
-            });
-            event.target.style.background = 'linear-gradient(135deg, #00ff88 0%, #00cc6a 100%)';
-            event.target.style.color = 'white';
-        }
-
         function startApp() {
-            userName = document.getElementById('nameInput').value || 'Teman Hebat';
-            document.getElementById('languageModal').style.display = 'none';
-            document.getElementById('languageDisplay').textContent = `${currentFlag} ${currentMode.charAt(0).toUpperCase() + currentMode.slice(1)}`;
+            userName = document.getElementById('nameInput').value || 'Student';
+            document.getElementById('welcomeModal').style.display = 'none';
             document.getElementById('userDisplay').textContent = `👤 ${userName}`;
             initializeCamera();
         }
 
-        function changeLanguage() {
-            document.getElementById('languageModal').style.display = 'block';
+        // ========================================
+        // ⌨️ Keyboard Controls
+        // ========================================
+        function setupKeyboardControls() {
+            document.addEventListener('keydown', (e) => {
+                switch(e.key) {
+                    case ' ':
+                        e.preventDefault();
+                        completeWord();
+                        break;
+                    case 'Tab':
+                        e.preventDefault();
+                        autoComplete();
+                        break;
+                    case 'Backspace':
+                        e.preventDefault();
+                        deleteLetter();
+                        break;
+                    case 'Delete':
+                        e.preventDefault();
+                        deleteWord();
+                        break;
+                    case 'Enter':
+                        e.preventDefault();
+                        speakSentence();
+                        break;
+                    case 'c':
+                    case 'C':
+                        clearAll();
+                        break;
+                    case '1':
+                    case '2':
+                    case '3':
+                    case '4':
+                    case '5':
+                        selectPrediction(parseInt(e.key) - 1);
+                        break;
+                }
+            });
+        }
+
+        // ========================================
+        // 🎬 Control Functions
+        // ========================================
+        function completeWord() {
+            const word = wordPredictor.getCurrentWord();
+            if (word) {
+                sentenceBuilder.addWord(word);
+                console.log(`✅ Word added: ${word}`);
+                speakText(word);
+                wordPredictor.clear();
+                updateUI();
+            }
+        }
+
+        function autoComplete() {
+            if (wordPredictor.getPredictions().length > 0) {
+                const completed = wordPredictor.completeWord();
+                console.log(`🎯 Auto-completed: ${completed}`);
+                updateUI();
+            }
+        }
+
+        function deleteLetter() {
+            wordPredictor.removeLetter();
+            console.log('🗑️ Letter deleted');
+            updateUI();
+        }
+
+        function deleteWord() {
+            sentenceBuilder.removeLastWord();
+            console.log('🗑️ Word deleted');
+            updateUI();
+        }
+
+        function speakSentence() {
+            const sentence = sentenceBuilder.getSentence();
+            if (sentence) {
+                console.log(`📢 Speaking: ${sentence}`);
+                speakText(sentence);
+                saveSentence(sentence);
+            }
+        }
+
+        function clearAll() {
+            wordPredictor.clear();
+            sentenceBuilder.clear();
+            console.log('🗑️ All cleared');
+            updateUI();
         }
 
         function toggleCamera() {
             isPaused = !isPaused;
         }
 
-        function resetApp() {
-            location.reload();
+        function selectPrediction(index) {
+            const predictions = wordPredictor.getPredictions();
+            if (index >= 0 && index < predictions.length) {
+                const selected = predictions[index];
+                wordPredictor.completeWord(selected);
+                console.log(`✨ Prediction selected: ${selected}`);
+                updateUI();
+            }
         }
 
-        async function initializeCamera() {
+        // ========================================
+        // 🗣️ Text-to-Speech
+        // ========================================
+        function speakText(text) {
+            if (text !== lastLetter && text !== '-') {
+                const now = Date.now();
+                if (now - lastSpeakTime > 1500) {
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    utterance.lang = 'en-US';
+                    utterance.rate = 0.9;
+                    speechSynthesis.speak(utterance);
+                    lastSpeakTime = now;
+                    lastLetter = text;
+                }
+            }
+        }
+
+        // ========================================
+        // 💾 Save Sentence
+        // ========================================
+        function saveSentence(sentence) {
+            const timestamp = new Date().toLocaleString();
+            const entry = `${timestamp} - ${userName}: ${sentence}\n`;
+            
+            // Try to download as text file
+            try {
+                const blob = new Blob([entry], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'sentences.txt';
+                a.click();
+                URL.revokeObjectURL(url);
+                console.log('💾 Sentence saved');
+            } catch (e) {
+                console.log('💾 Sentence:', entry);
+            }
+        }
+
+      // ========================================
+        // 🎨 UI Update
+        // ========================================
+        function updateUI() {
+            // Update current word
+            const currentWord = wordPredictor.getCurrentWord();
+            document.getElementById('currentWordDisplay').textContent = currentWord || '[typing...]';
+
+            // Update predictions
+            const predictions = wordPredictor.getPredictions();
+            const predList = document.getElementById('predictionsList');
+            
+            if (predictions.length > 0) {
+                predList.innerHTML = predictions.map((pred, i) => 
+                    `<div class="prediction-item ${i === 0 ? 'top' : ''}" onclick="selectPrediction(${i})">${i + 1}. ${pred}</div>`
+                ).join('');
+            } else {
+                predList.innerHTML = '<div style="color:#888;font-size:13px;text-align:center;padding:10px;">Start typing...</div>';
+            }
+
+            // Update sentence
+            document.getElementById('sentenceDisplay').textContent = sentenceBuilder.getSentence() || '[empty]';
+        }
+
+        // ========================================
+        // 📷 Camera Initialization
+        // ========================================
+        function initializeCamera() {
             const videoElement = document.getElementById('videoElement');
             const canvasElement = document.getElementById('canvasElement');
             const canvasCtx = canvasElement.getContext('2d');
 
             hands = new Hands({
-                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+                locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                }
             });
 
             hands.setOptions({
-                maxNumHands: 1,
+                maxNumHands: 2,
                 modelComplexity: 1,
-                minDetectionConfidence: 0.7,
+                minDetectionConfidence: 0.5,
                 minTrackingConfidence: 0.5
             });
 
@@ -428,184 +491,245 @@
             camera = new Camera(videoElement, {
                 onFrame: async () => {
                     if (!isPaused) {
-                        await hands.send({image: videoElement});
+                        await hands.send({ image: videoElement });
                     }
                 },
-                width: 960,
-                height: 540
+                width: 1280,
+                height: 720
             });
-
+            
             camera.start();
-
-            function onResults(results) {
-                canvasElement.width = videoElement.videoWidth;
-                canvasElement.height = videoElement.videoHeight;
-
-                canvasCtx.save();
-                canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-
-                if (results.multiHandLandmarks) {
-                    for (const landmarks of results.multiHandLandmarks) {
-                        drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FF88', lineWidth: 4});
-                        drawLandmarks(canvasCtx, landmarks, {color: '#FF4444', lineWidth: 2, radius: 5});
-
-                        const fingers = getFingerStates(landmarks);
-                        const text = classifyGesture(fingers);
-                        
-                        displayFingerStatus(fingers);
-                        displayDetectedText(text);
-                        speakText(text);
-                    }
-                } else {
-                    document.getElementById('detectedText').textContent = 'Tunjukkan gesture tangan...';
-                    document.getElementById('fingerStatus').innerHTML = '';
-                }
-
-                canvasCtx.restore();
-            }
+            console.log('📷 Camera initialized');
         }
 
-        function getFingerStates(landmarks) {
-            const fingers = [];
-            
-            // Thumb
-            if (landmarks[4].x < landmarks[3].x) {
-                fingers.push(1);
+        // ========================================
+        // 🤖 Hand Detection Results
+        // ========================================
+        function onResults(results) {
+            const videoElement = document.getElementById('videoElement');
+            const canvasElement = document.getElementById('canvasElement');
+            const canvasCtx = canvasElement.getContext('2d');
+
+            canvasElement.width = videoElement.videoWidth;
+            canvasElement.height = videoElement.videoHeight;
+
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                for (const landmarks of results.multiHandLandmarks) {
+                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {
+                        color: '#00ff88',
+                        lineWidth: 3
+                    });
+                    drawLandmarks(canvasCtx, landmarks, {
+                        color: '#ff4444',
+                        lineWidth: 1,
+                        radius: 3
+                    });
+                }
+
+                const letter = recognizeLetter(results.multiHandLandmarks[0]);
+                updateLetterDisplay(letter);
             } else {
-                fingers.push(0);
+                updateLetterDisplay('-');
             }
-            
-            // Other fingers
-            [8, 12, 16, 20].forEach(tip => {
-                if (landmarks[tip].y < landmarks[tip - 2].y) {
-                    fingers.push(1);
-                } else {
-                    fingers.push(0);
-                }
-            });
-            
-            return fingers;
+
+            canvasCtx.restore();
         }
 
-        function displayFingerStatus(fingers) {
-            const container = document.getElementById('fingerStatus');
-            container.innerHTML = '';
-            
-            fingers.forEach((state, index) => {
-                const div = document.createElement('div');
-                div.className = `finger-item ${state === 1 ? 'open' : 'closed'}`;
-                div.innerHTML = `
-                    <div class="finger-name">${fingerNames[index]}</div>
-                    <div class="finger-status-text">${state === 1 ? '✋ Terbuka' : '✊ Tertutup'}</div>
-                `;
-                container.appendChild(div);
-            });
-        }
+        // ========================================
+        // 🔤 Letter Recognition
+        // ========================================
+        function recognizeLetter(landmarks) {
+            if (!landmarks || landmarks.length < 21) return '-';
 
-        function displayDetectedText(text) {
-            const textElement = document.getElementById('detectedText');
-            if (text !== '-') {
-                textElement.textContent = `✨ ${text}`;
-                textElement.style.color = '#00ff88';
-            } else {
-                textElement.textContent = '❌ Gesture tidak dikenali';
-                textElement.style.color = '#ff4444';
-            }
-        }
-
-        function speakText(text) {
-            if (text !== lastText && text !== '-') {
-                const now = Date.now();
-                if (now - lastSpeakTime > 3000) {
-                    const utterance = new SpeechSynthesisUtterance(text);
-                    utterance.lang = currentLanguage;
-                    utterance.rate = 0.9;
-                    speechSynthesis.speak(utterance);
-                    lastSpeakTime = now;
-                    lastText = text;
-                }
-            }
-        }
-
-        function classifyGesture(fingers) {
-            const patterns = getLanguagePatterns();
-            const key = fingers.join(',');
-            return patterns[key] || '-';
-        }
-
-        function getLanguagePatterns() {
-            const patterns = {
-                'indonesia': {
-                    '1,0,0,0,1': `Nama saya ${userName}`,
-                    '1,1,1,1,1': 'Halo',
-                    '1,1,1,0,0': 'Saya',
-                    '0,1,0,1,0': 'Apa kabar',
-                    '0,0,1,1,1': 'Terima kasih',
-                    '1,1,0,0,1': 'Sampai jumpa',
-                    '1,0,1,1,0': 'Selamat pagi',
-                    '0,1,1,0,1': 'Selamat malam',
-                    '1,0,1,0,0': 'Aku senang bertemu kamu',
-                    '0,1,1,1,0': 'Semangat terus!',
-                    '0,0,0,0,1': 'Tolong',
-                    '1,0,0,0,0': 'Ya',
-                    '0,1,0,0,0': 'Tidak',
-                    '0,0,1,0,0': 'Maaf',
-                    '0,0,0,1,0': 'Saya lapar'
-                },
-                'english': {
-                    '1,0,0,0,1': `My name is ${userName}`,
-                    '1,1,1,1,1': 'Hello',
-                    '1,1,1,0,0': 'I am',
-                    '0,1,0,1,0': 'How are you',
-                    '0,0,1,1,1': 'Thank you',
-                    '1,1,0,0,1': 'Goodbye',
-                    '1,0,1,1,0': 'Good morning',
-                    '0,1,1,0,1': 'Good night',
-                    '1,0,1,0,0': 'Nice to meet you',
-                    '0,1,1,1,0': 'Keep going!',
-                    '0,0,0,0,1': 'Help',
-                    '1,0,0,0,0': 'Yes',
-                    '0,1,0,0,0': 'No',
-                    '0,0,1,0,0': 'Sorry',
-                    '0,0,0,1,0': 'I am hungry'
-                },
-                'japanese': {
-                    '1,0,0,0,1': `わたしのなまえは ${userName} です`,
-                    '1,1,1,1,1': 'こんにちは',
-                    '1,1,1,0,0': 'わたし',
-                    '0,1,0,1,0': 'おげんきですか',
-                    '0,0,1,1,1': 'ありがとう',
-                    '1,1,0,0,1': 'さようなら',
-                    '1,0,1,1,0': 'おはよう',
-                    '0,1,1,0,1': 'おやすみ',
-                    '1,0,1,0,0': 'はじめまして',
-                    '0,1,1,1,0': 'がんばって',
-                    '0,0,0,0,1': 'たすけて',
-                    '1,0,0,0,0': 'はい',
-                    '0,1,0,0,0': 'いいえ',
-                    '0,0,1,0,0': 'ごめんなさい',
-                    '0,0,0,1,0': 'おなかがすきました'
-                },
-                'spanish': {
-                    '1,0,0,0,1': `Mi nombre es ${userName}`,
-                    '1,1,1,1,1': 'Hola',
-                    '1,1,1,0,0': 'Yo soy',
-                    '0,1,0,1,0': 'Cómo estás',
-                    '0,0,1,1,1': 'Gracias',
-                    '1,1,0,0,1': 'Adiós',
-                    '1,0,1,1,0': 'Buenos días',
-                    '0,1,1,0,1': 'Buenas noches',
-                    '1,0,1,0,0': 'Encantado de conocerte',
-                    '0,1,1,1,0': 'Sigue adelante',
-                    '0,0,0,0,1': 'Ayuda',
-                    '1,0,0,0,0': 'Sí',
-                    '0,1,0,0,0': 'No',
-                    '0,0,1,0,0': 'Lo siento',
-                    '0,0,0,1,0': 'Tengo hambre'
-                }
+            const fingers = {
+                thumb: isFingerExtended(landmarks, 4, 3, 2),
+                index: isFingerExtended(landmarks, 8, 7, 6),
+                middle: isFingerExtended(landmarks, 12, 11, 10),
+                ring: isFingerExtended(landmarks, 16, 15, 14),
+                pinky: isFingerExtended(landmarks, 20, 19, 18)
             };
+
+            const extendedCount = Object.values(fingers).filter(x => x).length;
+
+            // A - Fist with thumb on side
+            if (!fingers.thumb && !fingers.index && !fingers.middle && !fingers.ring && !fingers.pinky) {
+                return 'A';
+            }
+
+            // B - All fingers extended except thumb
+            if (!fingers.thumb && fingers.index && fingers.middle && fingers.ring && fingers.pinky) {
+                return 'B';
+            }
+
+            // C - Curved hand
+            if (isCurvedHand(landmarks)) {
+                return 'C';
+            }
+
+            // D - Index up, thumb touching middle
+            if (!fingers.thumb && fingers.index && !fingers.middle && !fingers.ring && !fingers.pinky) {
+                return 'D';
+            }
+
+            // E - All fingers curled
+            if (allFingersCurled(landmarks)) {
+                return 'E';
+            }
+
+            // F - Three fingers up, thumb and index forming circle
+            if (fingers.middle && fingers.ring && fingers.pinky && !fingers.index) {
+                return 'F';
+            }
+
+            // I - Pinky extended only
+            if (!fingers.thumb && !fingers.index && !fingers.middle && !fingers.ring && fingers.pinky) {
+                return 'I';
+            }
+
+            // L - Thumb and index forming L shape
+            if (fingers.thumb && fingers.index && !fingers.middle && !fingers.ring && !fingers.pinky) {
+                const angle = getAngleBetweenFingers(landmarks, 4, 8);
+                if (angle > 70 && angle < 110) return 'L';
+            }
+
+            // O - All fingers forming circle
+            if (isCircleShape(landmarks)) {
+                return 'O';
+            }
+
+            // U - Index and middle up, close together
+            if (!fingers.thumb && fingers.index && fingers.middle && !fingers.ring && !fingers.pinky) {
+                return 'U';
+            }
+
+            // V - Index and middle up, spread apart
+            if (!fingers.thumb && fingers.index && fingers.middle && !fingers.ring && !fingers.pinky) {
+                const spread = getFingerSpread(landmarks, 8, 12);
+                if (spread > 0.1) return 'V';
+                return 'U';
+            }
+
+            // W - Three fingers up
+            if (!fingers.thumb && fingers.index && fingers.middle && fingers.ring && !fingers.pinky) {
+                return 'W';
+            }
+
+            // Y - Thumb and pinky extended
+            if (fingers.thumb && !fingers.index && !fingers.middle && !fingers.ring && fingers.pinky) {
+                return 'Y';
+            }
+
+            // Five fingers extended
+            if (extendedCount === 5) {
+                return '5';
+            }
+
+            return '-';
+        }
+
+        // ========================================
+        // 🧮 Helper Functions for Recognition
+        // ========================================
+        function isFingerExtended(landmarks, tip, pip, mcp) {
+            const tipY = landmarks[tip].y;
+            const pipY = landmarks[pip].y;
+            const mcpY = landmarks[mcp].y;
+            return tipY < pipY && pipY < mcpY;
+        }
+
+        function isCurvedHand(landmarks) {
+            const wrist = landmarks[0];
+            const fingertips = [4, 8, 12, 16, 20];
+            let avgDistance = 0;
             
-            return patterns[currentMode] || patterns['indonesia'];
+            fingertips.forEach(tip => {
+                const dist = Math.sqrt(
+                    Math.pow(landmarks[tip].x - wrist.x, 2) +
+                    Math.pow(landmarks[tip].y - wrist.y, 2)
+                );
+                avgDistance += dist;
+            });
+            
+            avgDistance /= fingertips.length;
+            return avgDistance > 0.15 && avgDistance < 0.25;
+        }
+
+        function allFingersCurled(landmarks) {
+            const wrist = landmarks[0];
+            const fingertips = [8, 12, 16, 20];
+            
+            for (let tip of fingertips) {
+                const dist = Math.sqrt(
+                    Math.pow(landmarks[tip].x - wrist.x, 2) +
+                    Math.pow(landmarks[tip].y - wrist.y, 2)
+                );
+                if (dist > 0.15) return false;
+            }
+            return true;
+        }
+
+        function isCircleShape(landmarks) {
+            const thumb = landmarks[4];
+            const index = landmarks[8];
+            const dist = Math.sqrt(
+                Math.pow(thumb.x - index.x, 2) +
+                Math.pow(thumb.y - index.y, 2)
+            );
+            return dist < 0.05;
+        }
+
+        function getAngleBetweenFingers(landmarks, finger1, finger2) {
+            const wrist = landmarks[0];
+            const f1 = landmarks[finger1];
+            const f2 = landmarks[finger2];
+            
+            const angle1 = Math.atan2(f1.y - wrist.y, f1.x - wrist.x);
+            const angle2 = Math.atan2(f2.y - wrist.y, f2.x - wrist.x);
+            
+            return Math.abs(angle1 - angle2) * (180 / Math.PI);
+        }
+
+        function getFingerSpread(landmarks, finger1, finger2) {
+            return Math.sqrt(
+                Math.pow(landmarks[finger1].x - landmarks[finger2].x, 2) +
+                Math.pow(landmarks[finger1].y - landmarks[finger2].y, 2)
+            );
+        }
+
+        // ========================================
+        // 🎯 Letter Display Update
+        // ========================================
+        function updateLetterDisplay(letter) {
+            const display = document.getElementById('letterDisplay');
+            const letterText = document.getElementById('detectedLetter');
+
+            if (letter === '-') {
+                display.classList.add('no-detect');
+                letterText.textContent = '-';
+                lastDetectedLetter = '';
+                letterConfirmTime = 0;
+                return;
+            }
+
+            display.classList.remove('no-detect');
+            letterText.textContent = letter;
+
+            // Confirm letter after holding for duration
+            if (letter === lastDetectedLetter) {
+                const now = Date.now();
+                if (now - letterConfirmTime >= letterConfirmDuration) {
+                    wordPredictor.addLetter(letter);
+                    console.log(`✅ Letter confirmed: ${letter}`);
+                    updateUI();
+                    letterConfirmTime = now + 500; // Cooldown
+                }
+            } else {
+                lastDetectedLetter = letter;
+                letterConfirmTime = Date.now();
+            }
         }
     </script>
 </body>

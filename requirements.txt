@@ -1,7 +1,6 @@
 opencv-python
 mediapipe
 numpy
-gTTS
-playsound
+pyttsx3
 Flask
 flask-cors

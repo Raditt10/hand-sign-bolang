@@ -1,138 +1,202 @@
 import cv2 
 import mediapipe as mp 
 import numpy as np 
-from gtts import gTTS 
-try:
-    from playsound import playsound
-    playsound_available = True
-except Exception:
-    # playsound may be installed but still fail at runtime; keep flag and fallback later
-    playsound_available = False
-    def playsound(_):
-        raise RuntimeError("playsound not available")
+import pyttsx3
 import os 
 import threading 
 import time
 import queue
-import subprocess
-# note: flask was previously imported but not used; removed to avoid unnecessary import
+import difflib
 
+# Inisialisasi TTS
+tts_engine = pyttsx3.init()
+tts_engine.setProperty('rate', 150) 
+tts_engine.setProperty('volume', 0.9) 
+
+# Kamus kata umum
+KATA_UMUM = [
+    "HALO", "HAI", "TERIMA", "KASIH", "TOLONG", "MAAF", "YA", "TIDAK",
+    "BANTU", "BAIK", "BURUK", "PAGI", "SIANG", "SORE", "MALAM",
+    "SELAMAT", "TINGGAL", "SAMPAI", "JUMPA", "NAMA", "SAYA", "KAMU",
+    "APA", "SIAPA", "DIMANA", "KAPAN", "MENGAPA", "BAGAIMANA",
+    "BISA", "MAU", "PERLU", "PUNYA", "AKAN", "SUDAH",
+    "PERGI", "DATANG", "LIHAT", "DENGAR", "BICARA", "KATA",
+    "MAKAN", "MINUM", "TIDUR", "KERJA", "MAIN", "BELAJAR",
+    "SENANG", "SEDIH", "MARAH", "LELAH", "LAPAR", "HAUS",
+    "PANAS", "DINGIN", "BESAR", "KECIL", "CEPAT", "LAMBAT", "BARU", "LAMA"
+]
 
 # ===========================================
-# 🌍 Daftar Bahasa yang Didukung
+# 📝 Prediktor Kata
 # ===========================================
-bahasa_map = {
-    "1": ("id", "indonesia", "🇮🇩"),
-    "2": ("en", "english", "🇺🇸"),
-    "3": ("ja", "japanese", "🇯🇵"),
-    "4": ("es", "spanish", "🇪🇸"),
-    "5": ("jw", "javanese", "🏴"),
-    "6": ("su", "sundanese", "🏴"),
-    "7": ("it", "italian", "🇮🇹"),
-    "8": ("zh-CN", "chinese", "🇨🇳"),
-    "9": ("th", "thai", "🇹🇭"),
-    "10": ("ar", "arabic", "🇸🇦"),
-    "11": ("ko", "korean", "🇰🇷"),
-    "12": ("hi", "hindi", "🇮🇳")
-}
+class PrediktorKata:
+    def __init__(self, kamus):
+        self.kamus = sorted(kamus)
+        self.kata_sekarang = []
+        self.kata_prediksi = []
+        
+    def tambah_huruf(self, huruf):
+        """Menambahkan huruf dan memprediksi kata"""
+        if huruf.isalpha():
+            self.kata_sekarang.append(huruf.upper())
+            self._perbarui_prediksi()
+    
+    def hapus_huruf(self):
+        """Menghapus huruf terakhir"""
+        if self.kata_sekarang:
+            self.kata_sekarang.pop()
+            self._perbarui_prediksi()
+    
+    def _perbarui_prediksi(self):
+        """Update prediksi kata berdasarkan huruf saat ini"""
+        saat_ini = ''.join(self.kata_sekarang)
+        if not saat_ini:
+            self.kata_prediksi = []
+            return
+        
+        # Cari kata yang dimulai dengan huruf yang diketik
+        cocok = [kata for kata in self.kamus if kata.startswith(saat_ini)]
+        
+        # Jika tidak ada yang cocok, cari yang mirip
+        if not cocok and len(saat_ini) > 2:
+            cocok = difflib.get_close_matches(saat_ini, self.kamus, n=3, cutoff=0.6)
+        
+        self.kata_prediksi = cocok[:5]  # 5 prediksi teratas
+    
+    def ambil_kata_sekarang(self):
+        """Mendapatkan kata yang sedang diketik"""
+        return ''.join(self.kata_sekarang)
+    
+    def ambil_prediksi(self):
+        """Mendapatkan prediksi kata"""
+        return self.kata_prediksi
+    
+    def lengkapi_kata(self, kata=None):
+        """Melengkapi kata dengan prediksi pertama atau kata tertentu"""
+        if kata:
+            self.kata_sekarang = list(kata)
+        elif self.kata_prediksi:
+            self.kata_sekarang = list(self.kata_prediksi[0])
+        self._perbarui_prediksi()
+        return ''.join(self.kata_sekarang)
+    
+    def bersihkan(self):
+        """Bersihkan kata saat ini"""
+        self.kata_sekarang = []
+        self.kata_prediksi = []
 
-# Queue untuk manajemen suara
-speech_queue = queue.Queue()
-is_speaking = False
-
-# Module-level defaults (will be set in main())
-bahasa = None
-mode = None
-bendera = None
-user_name = "Teman Hebat"
-
-def tampilkan_menu():
-    print("\n" + "="*50)
-    print("🌍 PILIH BAHASA SUARA")
-    print("="*50)
-    for key, val in bahasa_map.items():
-        print(f"{key}. {val[1].capitalize()} {val[2]}")
-    print()
-
-def pilih_bahasa():
-    tampilkan_menu()
-    while True:
-        pilihan = input("Masukkan nomor bahasa (1-12): ").strip()
-        if pilihan in bahasa_map:
-            return bahasa_map[pilihan]
+# ===========================================
+# 📝 Pembuat Kalimat dengan Tanda Baca Otomatis
+# ===========================================
+class PembuatKalimat:
+    def __init__(self):
+        self.kata_kata = []
+        self.kalimat_sekarang = ""
+        
+    def tambah_kata(self, kata):
+        """Menambahkan kata ke kalimat"""
+        if kata.strip():
+            self.kata_kata.append(kata.upper())
+            self._bangun_kalimat()
+    
+    def _bangun_kalimat(self):
+        """Membangun kalimat dengan tanda baca otomatis"""
+        if not self.kata_kata:
+            self.kalimat_sekarang = ""
+            return
+        
+        # Buat kalimat
+        kalimat = ' '.join(self.kata_kata)
+        
+        # Kapitalisasi otomatis
+        kalimat = kalimat.capitalize()
+        
+        # Tanda baca otomatis berdasarkan kata terakhir
+        kata_terakhir = self.kata_kata[-1].upper()
+        
+        # Kata tanya
+        kata_tanya = ["APA", "SIAPA", "DIMANA", "KAPAN", "MENGAPA", "BAGAIMANA", "BISA"]
+        if self.kata_kata[0].upper() in kata_tanya:
+            if not kalimat.endswith('?'):
+                kalimat += '?'
+        # Salam/perpisahan
+        elif kata_terakhir in ["HALO", "HAI", "SELAMAT", "TINGGAL", "TERIMA", "KASIH", "MAAF"]:
+            if not kalimat.endswith('!'):
+                kalimat += '!'
+        # Pernyataan biasa
         else:
-            print("❌ Pilihan tidak valid. Silakan pilih 1-12.")
-
-# NOTE: Language selection and user input are moved into main() so importing this
-# module doesn't start interactive prompts or access the camera automatically.
+            if not kalimat.endswith('.'):
+                kalimat += '.'
+        
+        self.kalimat_sekarang = kalimat
+    
+    def ambil_kalimat(self):
+        """Mendapatkan kalimat saat ini"""
+        return self.kalimat_sekarang
+    
+    def hapus_kata_terakhir(self):
+        """Menghapus kata terakhir"""
+        if self.kata_kata:
+            self.kata_kata.pop()
+            self._bangun_kalimat()
+    
+    def bersihkan(self):
+        """Bersihkan kalimat"""
+        self.kata_kata = []
+        self.kalimat_sekarang = ""
 
 # ===========================================
-# 🗣 Fungsi bicara dengan penghapusan cache
+# 🗣 Manajemen Antrian Suara
 # ===========================================
-def speech_worker():
-    """Worker thread untuk memutar suara dan menghapus cache"""
-    global is_speaking
+antrian_suara = queue.Queue()
+sedang_berbicara = False
+
+nama_pengguna = "Pengguna"
+huruf_terdeteksi_terakhir = ""
+waktu_konfirmasi_huruf = 0
+durasi_konfirmasi_huruf = 1.5
+
+# Inisialisasi prediktor kata dan pembuat kalimat
+prediktor_kata = PrediktorKata(KATA_UMUM)
+pembuat_kalimat = PembuatKalimat()
+
+# ===========================================
+# 🗣 Fungsi Text-to-Speech
+# ===========================================
+def pekerja_suara():
+    """Worker thread untuk text-to-speech menggunakan pyttsx3"""
+    global sedang_berbicara
     while True:
-        filename = speech_queue.get()
-        if filename is None:  # Signal to stop
+        teks = antrian_suara.get()
+        if teks is None:
             break
         try:
-            is_speaking = True
-            # Try primary playback
-            playsound(filename)
-            # Hapus file cache setelah diputar (hanya jika playback succeeded)
-            if os.path.exists(filename):
-                try:
-                    os.remove(filename)
-                    print(f"🗑 Cache dihapus: {filename}")
-                except Exception as e_del:
-                    print(f"⚠️ Gagal menghapus cache: {e_del}")
+            sedang_berbicara = True
+            print(f"🔊 Berbicara: '{teks}'")
+            tts_engine.say(teks)
+            tts_engine.runAndWait()
         except Exception as e:
-            # Primary playback failed. Try graceful fallback to open with system default player
-            print(f"❌ Error saat memutar suara: \n    {e}")
-            try:
-                if os.name == 'nt':
-                    # On Windows, open with default associated application (non-blocking)
-                    os.startfile(filename)
-                    print(f"ℹ️ Fallback: membuka {filename} dengan aplikasi default. File tidak dihapus otomatis.")
-                else:
-                    # Try xdg-open (Linux) or open (macOS)
-                    opener = 'xdg-open' if os.name == 'posix' else 'open'
-                    subprocess.Popen([opener, filename])
-                    print(f"ℹ️ Fallback: membuka {filename} dengan '{opener}'. File tidak dihapus otomatis.")
-            except Exception as e2:
-                print(f"⚠️ Fallback playback juga gagal: {e2}")
+            print(f"❌ Error TTS: {e}")
         finally:
-            is_speaking = False
-            speech_queue.task_done()
+            sedang_berbicara = False
+            antrian_suara.task_done()
 
-# The speech worker thread will be started inside main().
+teks_terakhir = ""
+waktu_bicara_terakhir = 0
 
-last_text = ""
-last_speak_time = 0
-
-def maybe_speak(text):
-    global last_text, last_speak_time
-    if text != last_text and text != "-":
-        now = time.time()
-        if now - last_speak_time > 3:  # jeda minimal 3 detik
+def mungkin_bicara(teks):
+    """Bicara dengan TTS jika diperlukan"""
+    global teks_terakhir, waktu_bicara_terakhir
+    if teks != teks_terakhir and teks != "-":
+        sekarang = time.time()
+        if sekarang - waktu_bicara_terakhir > 1.5:
             try:
-                # Buat nama file cache yang unik
-                filename = f"cache_{bahasa}_{hash(text) & 0xFFFFFFFF}.mp3"
-                
-                # Jika file belum ada, buat dulu
-                if not os.path.exists(filename):
-                    tts = gTTS(text=text, lang=bahasa)
-                    tts.save(filename)
-                    print(f"💾 Cache disimpan: {filename}")
-                
-                # Tambahkan ke queue untuk diputar
-                speech_queue.put(filename)
-                last_speak_time = now
-                last_text = text
-                
+                print(f"📢 Menambah ke antrian TTS: '{teks}'")
+                antrian_suara.put(teks)
+                waktu_bicara_terakhir = sekarang
+                teks_terakhir = teks
             except Exception as e:
-                print(f"❌ Error membuat TTS: {e}")
+                print(f"❌ Error menambah antrian TTS: {e}")
 
 # ===========================================
 # ✋ Inisialisasi Mediapipe
@@ -147,346 +211,429 @@ hands = mp_hands.Hands(
 )
 
 # ===========================================
-# ✋ Deteksi Jari
+# 🎨 Fungsi Pembantu UI
 # ===========================================
-def get_finger_states(hand_landmarks):
-    tips = [4, 8, 12, 16, 20]  # ujung jari: thumb, index, middle, ring, pinky
-    fingers = []
+def buat_background_sekolah(lebar=1280, tinggi=720):
+    """Membuat background dengan nuansa pendidikan"""
+    bg = np.ones((tinggi, lebar, 3), dtype=np.uint8)
     
-    # Deteksi thumb (berbeda karena orientasinya horizontal)
-    if hand_landmarks.landmark[4].x < hand_landmarks.landmark[3].x:
-        fingers.append(1)  # thumb terbuka
-    else:
-        fingers.append(0)  # thumb tertutup
+    # Gradient background
+    for i in range(tinggi):
+        rasio = i / tinggi
+        b = int(180 - (rasio * 80))
+        g = int(140 + (rasio * 60))
+        r = int(50 + (rasio * 30))
+        bg[i, :] = [b, g, r]
     
-    # Deteksi jari lainnya (berdasarkan posisi Y)
-    for tip in [8, 12, 16, 20]:
-        if hand_landmarks.landmark[tip].y < hand_landmarks.landmark[tip - 2].y:
-            fingers.append(1)  # jari terbuka
-        else:
-            fingers.append(0)  # jari tertutup
+    # Grid pattern
+    for i in range(0, lebar, 40):
+        cv2.line(bg, (i, 0), (i, tinggi), (255, 255, 255), 1, cv2.LINE_AA)
+    for i in range(0, tinggi, 40):
+        cv2.line(bg, (0, i), (lebar, i), (255, 255, 255), 1, cv2.LINE_AA)
     
-    return fingers
+    # Overlay semi-transparan
+    overlay = bg.copy()
+    cv2.rectangle(overlay, (0, 0), (lebar, tinggi), (20, 40, 60), -1)
+    bg = cv2.addWeighted(bg, 0.7, overlay, 0.3, 0)
+    
+    # Header bar
+    cv2.rectangle(bg, (0, 0), (lebar, 80), (50, 150, 255), -1)
+    cv2.line(bg, (0, 80), (lebar, 80), (100, 180, 255), 5)
+    
+    # Footer bar
+    cv2.rectangle(bg, (0, tinggi-60), (lebar, tinggi), (255, 180, 50), -1)
+    cv2.line(bg, (0, tinggi-60), (lebar, tinggi-60), (255, 200, 100), 5)
+    
+    return bg
+
+def tambah_teks_dengan_background(frame, teks, posisi, skala_font=0.8, warna=(255, 255, 255), 
+                                   warna_bg=(50, 50, 50), padding=10, ketebalan=2):
+    """Menambahkan teks dengan background"""
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    (lebar_teks, tinggi_teks), baseline = cv2.getTextSize(teks, font, skala_font, ketebalan)
+    
+    x, y = posisi
+    pt1 = (x - padding, y - tinggi_teks - padding)
+    pt2 = (x + lebar_teks + padding, y + baseline + padding)
+    
+    overlay = frame.copy()
+    cv2.rectangle(overlay, pt1, pt2, warna_bg, -1)
+    cv2.addWeighted(overlay, 0.8, frame, 0.2, 0, frame)
+    cv2.rectangle(frame, pt1, pt2, warna, 2)
+    cv2.putText(frame, teks, (x, y), font, skala_font, warna, ketebalan, cv2.LINE_AA)
+    
+    return frame
 
 # ===========================================
-# 💬 Klasifikasi Gesture ke Kalimat
+# ✋ Fungsi Deteksi Tangan
 # ===========================================
-def classify_letter(fingers):
-    # 🇮🇩 Bahasa Indonesia
-    if mode == "indonesia":
-        if fingers == [1, 0, 0, 0, 1]: return f"Nama saya {user_name}"
-        elif fingers == [1, 1, 1, 1, 1]: return "Halo"
-        elif fingers == [1, 1, 1, 0, 0]: return "Saya"
-        elif fingers == [0, 1, 0, 1, 0]: return "Apa kabar"
-        elif fingers == [0, 0, 1, 1, 1]: return "Terima kasih"
-        elif fingers == [1, 1, 0, 0, 1]: return "Sampai jumpa"
-        elif fingers == [1, 0, 1, 1, 0]: return "Selamat pagi"
-        elif fingers == [0, 1, 1, 0, 1]: return "Selamat malam"
-        elif fingers == [1, 0, 1, 0, 0]: return "Aku senang bertemu kamu"
-        elif fingers == [0, 1, 1, 1, 0]: return "Semangat terus!"
-        elif fingers == [0, 0, 0, 0, 1]: return "Tolong"
-        elif fingers == [1, 0, 0, 0, 0]: return "Ya"
-        elif fingers == [0, 1, 0, 0, 0]: return "Tidak"
-        elif fingers == [0, 0, 1, 0, 0]: return "Maaf"
-        elif fingers == [0, 0, 0, 1, 0]: return "Saya lapar"
+def ambil_status_jari(landmark_tangan):
+    """Mendapatkan status jari (terbuka/tertutup)"""
+    jari = []
     
-    # 🇺🇸 English
-    elif mode == "english":
-        if fingers == [1, 0, 0, 0, 1]: return f"My name is {user_name}"
-        elif fingers == [1, 1, 1, 1, 1]: return "Hello"
-        elif fingers == [1, 1, 1, 0, 0]: return "I am"
-        elif fingers == [0, 1, 0, 1, 0]: return "How are you"
-        elif fingers == [0, 0, 1, 1, 1]: return "Thank you"
-        elif fingers == [1, 1, 0, 0, 1]: return "Goodbye"
-        elif fingers == [1, 0, 1, 1, 0]: return "Good morning"
-        elif fingers == [0, 1, 1, 0, 1]: return "Good night"
-        elif fingers == [1, 0, 1, 0, 0]: return "Nice to meet you"
-        elif fingers == [0, 1, 1, 1, 0]: return "Keep going!"
-        elif fingers == [0, 0, 0, 0, 1]: return "Help"
-        elif fingers == [1, 0, 0, 0, 0]: return "Yes"
-        elif fingers == [0, 1, 0, 0, 0]: return "No"
-        elif fingers == [0, 0, 1, 0, 0]: return "Sorry"
-        elif fingers == [0, 0, 0, 1, 0]: return "I am hungry"
+    # Jempol
+    if landmark_tangan.landmark[4].x < landmark_tangan.landmark[3].x:
+        jari.append(1)
+    else:
+        jari.append(0)
     
-    # 🇯🇵 Japanese
-    elif mode == "japanese":
-        if fingers == [1, 0, 0, 0, 1]: return f"わたしのなまえは {user_name} です"
-        elif fingers == [1, 1, 1, 1, 1]: return "こんにちは"  # Konnichiwa
-        elif fingers == [1, 1, 1, 0, 0]: return "わたし"  # Watashi
-        elif fingers == [0, 1, 0, 1, 0]: return "おげんきですか"  # Ogenki desu ka
-        elif fingers == [0, 0, 1, 1, 1]: return "ありがとう"  # Arigatou
-        elif fingers == [1, 1, 0, 0, 1]: return "さようなら"  # Sayonara
-        elif fingers == [1, 0, 1, 1, 0]: return "おはよう"  # Ohayou
-        elif fingers == [0, 1, 1, 0, 1]: return "おやすみ"  # Oyasumi
-        elif fingers == [1, 0, 1, 0, 0]: return "はじめまして"  # Hajimemashite
-        elif fingers == [0, 1, 1, 1, 0]: return "がんばって"  # Ganbatte!
-        elif fingers == [0, 0, 0, 0, 1]: return "たすけて"  # Tasukete
-        elif fingers == [1, 0, 0, 0, 0]: return "はい"  # Hai
-        elif fingers == [0, 1, 0, 0, 0]: return "いいえ"  # Iie
-        elif fingers == [0, 0, 1, 0, 0]: return "ごめんなさい"  # Gomennasai
-        elif fingers == [0, 0, 0, 1, 0]: return "おなかがすきました"  # Onaka ga sukimashita
+    # Jari lainnya
+    for ujung in [8, 12, 16, 20]:
+        if landmark_tangan.landmark[ujung].y < landmark_tangan.landmark[ujung - 2].y:
+            jari.append(1)
+        else:
+            jari.append(0)
     
-    # 🇪🇸 Spanish
-    elif mode == "spanish":
-        if fingers == [1, 0, 0, 0, 1]: return f"Mi nombre es {user_name}"
-        elif fingers == [1, 1, 1, 1, 1]: return "Hola"
-        elif fingers == [1, 1, 1, 0, 0]: return "Yo soy"
-        elif fingers == [0, 1, 0, 1, 0]: return "Cómo estás"
-        elif fingers == [0, 0, 1, 1, 1]: return "Gracias"
-        elif fingers == [1, 1, 0, 0, 1]: return "Adiós"
-        elif fingers == [1, 0, 1, 1, 0]: return "Buenos días"
-        elif fingers == [0, 1, 1, 0, 1]: return "Buenas noches"
-        elif fingers == [1, 0, 1, 0, 0]: return "Encantado de conocerte"
-        elif fingers == [0, 1, 1, 1, 0]: return "Sigue adelante"
-        elif fingers == [0, 0, 0, 0, 1]: return "Ayuda"
-        elif fingers == [1, 0, 0, 0, 0]: return "Sí"
-        elif fingers == [0, 1, 0, 0, 0]: return "No"
-        elif fingers == [0, 0, 1, 0, 0]: return "Lo siento"
-        elif fingers == [0, 0, 0, 1, 0]: return "Tengo hambre"
+    return jari
+
+def hitung_jarak(p1, p2):
+    """Menghitung jarak euclidean"""
+    return np.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2 + (p1.z - p2.z)**2)
+
+def hitung_sudut(p1, p2, p3):
+    """Menghitung sudut antara tiga titik"""
+    v1 = np.array([p1.x - p2.x, p1.y - p2.y])
+    v2 = np.array([p3.x - p2.x, p3.y - p2.y])
     
-    # 🏴 Javanese
-    elif mode == "javanese":
-        if fingers == [1, 0, 0, 0, 1]: return f"Jenengku {user_name}"
-        elif fingers == [1, 1, 1, 1, 1]: return "Halo"
-        elif fingers == [1, 1, 1, 0, 0]: return "Aku"
-        elif fingers == [0, 1, 0, 1, 0]: return "Kabar apik ora"
-        elif fingers == [0, 0, 1, 1, 1]: return "Matur nuwun"
-        elif fingers == [1, 1, 0, 0, 1]: return "Pamitan"
-        elif fingers == [1, 0, 1, 1, 0]: return "Sugeng enjing"
-        elif fingers == [0, 1, 1, 0, 1]: return "Sugeng dalu"
-        elif fingers == [1, 0, 1, 0, 0]: return "Seneng ketemu kowe"
-        elif fingers == [0, 1, 1, 1, 0]: return "Semangat yo!"
-        elif fingers == [0, 0, 0, 0, 1]: return "Tulung"
-        elif fingers == [1, 0, 0, 0, 0]: return "Iya"
-        elif fingers == [0, 1, 0, 0, 0]: return "Ora"
-        elif fingers == [0, 0, 1, 0, 0]: return "Nuwun sewu"
-        elif fingers == [0, 0, 0, 1, 0]: return "Aku luwe"
+    cos_sudut = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-6)
+    sudut = np.arccos(np.clip(cos_sudut, -1.0, 1.0))
+    return np.degrees(sudut)
+
+# ===========================================
+# 🔤 Klasifikasi Huruf
+# ===========================================
+def klasifikasi_huruf(jari, landmarks):
+    """Klasifikasi gesture bahasa isyarat menjadi huruf"""
     
-    # 🏴 Sundanese
-    elif mode == "sundanese":
-        if fingers == [1, 0, 0, 0, 1]: return f"Ngaran abdi {user_name}"
-        elif fingers == [1, 1, 1, 1, 1]: return "Halo"
-        elif fingers == [1, 1, 1, 0, 0]: return "Abdi"
-        elif fingers == [0, 1, 0, 1, 0]: return "Kumaha damang"
-        elif fingers == [0, 0, 1, 1, 1]: return "Hatur nuhun"
-        elif fingers == [1, 1, 0, 0, 1]: return "Dugi ka engke"
-        elif fingers == [1, 0, 1, 1, 0]: return "Wilujeng enjing"
-        elif fingers == [0, 1, 1, 0, 1]: return "Wilujeng wengi"
-        elif fingers == [1, 0, 1, 0, 0]: return "Reueus patepang"
-        elif fingers == [0, 1, 1, 1, 0]: return "Sumanget terus"
-        elif fingers == [0, 0, 0, 0, 1]: return "Tolong"
-        elif fingers == [1, 0, 0, 0, 0]: return "Enya"
-        elif fingers == [0, 1, 0, 0, 0]: return "Henteu"
-        elif fingers == [0, 0, 1, 0, 0]: return "Hapunten"
-        elif fingers == [0, 0, 0, 1, 0]: return "Abdi lapar"
+    # A - Semua jari tertutup, jempol di samping
+    if jari == [0, 0, 0, 0, 0]:
+        jempol_samping = landmarks[4].x < landmarks[2].x or landmarks[4].x > landmarks[17].x
+        if jempol_samping:
+            return "A"
     
-    # 🇮🇹 Italian
-    elif mode == "italian":
-        if fingers == [1, 0, 0, 0, 1]: return f"Mi chiamo {user_name}"
-        elif fingers == [1, 1, 1, 1, 1]: return "Ciao"
-        elif fingers == [1, 1, 1, 0, 0]: return "Io sono"
-        elif fingers == [0, 1, 0, 1, 0]: return "Come stai"
-        elif fingers == [0, 0, 1, 1, 1]: return "Grazie"
-        elif fingers == [1, 1, 0, 0, 1]: return "Arrivederci"
-        elif fingers == [1, 0, 1, 1, 0]: return "Buongiorno"
-        elif fingers == [0, 1, 1, 0, 1]: return "Buonanotte"
-        elif fingers == [1, 0, 1, 0, 0]: return "Piacere di conoscerti"
-        elif fingers == [0, 1, 1, 1, 0]: return "Forza!"
-        elif fingers == [0, 0, 0, 0, 1]: return "Aiuto"
-        elif fingers == [1, 0, 0, 0, 0]: return "Sì"
-        elif fingers == [0, 1, 0, 0, 0]: return "No"
-        elif fingers == [0, 0, 1, 0, 0]: return "Scusa"
-        elif fingers == [0, 0, 0, 1, 0]: return "Ho fame"
+    # B - Jari tengah, manis, kelingking terbuka, jempol dan telunjuk tertutup
+    if jari == [0, 0, 1, 1, 1]:
+        jempol_tertekuk = landmarks[4].y > landmarks[3].y
+        if jempol_tertekuk:
+            return "B"
     
-    # 🇨🇳 Chinese
-    elif mode == "chinese":
-        if fingers == [1, 0, 0, 0, 1]: return f"我的名字是 {user_name}"  # Wo de mingzi shi
-        elif fingers == [1, 1, 1, 1, 1]: return "你好"  # Ni hao
-        elif fingers == [1, 1, 1, 0, 0]: return "我是"  # Wo shi
-        elif fingers == [0, 1, 0, 1, 0]: return "你好吗"  # Ni hao ma
-        elif fingers == [0, 0, 1, 1, 1]: return "谢谢"  # Xiexie
-        elif fingers == [1, 1, 0, 0, 1]: return "再见"  # Zaijian
-        elif fingers == [1, 0, 1, 1, 0]: return "早上好"  # Zaoshang hao
-        elif fingers == [0, 1, 1, 0, 1]: return "晚安"  # Wan an
-        elif fingers == [1, 0, 1, 0, 0]: return "很高兴见到你"  # Hen gaoxing jiandao ni
-        elif fingers == [0, 1, 1, 1, 0]: return "加油!"  # Jiayou!
-        elif fingers == [0, 0, 0, 0, 1]: return "帮助"  # Bangzhu
-        elif fingers == [1, 0, 0, 0, 0]: return "是的"  # Shide
-        elif fingers == [0, 1, 0, 0, 0]: return "不"  # Bu
-        elif fingers == [0, 0, 1, 0, 0]: return "对不起"  # Duibuqi
-        elif fingers == [0, 0, 0, 1, 0]: return "我饿了"  # Wo ele
+    # C - Jempol dan jari membentuk huruf C
+    if jari == [1, 0, 0, 0, 0]:
+        jarak_kurva = hitung_jarak(landmarks[4], landmarks[8])
+        if 0.08 < jarak_kurva < 0.15:
+            return "C"
     
-    # 🇹🇭 Thai
-    elif mode == "thai":
-        if fingers == [1, 0, 0, 0, 1]: return f"ฉันชื่อ {user_name}"
-        elif fingers == [1, 1, 1, 1, 1]: return "สวัสดี"  # Sawasdee
-        elif fingers == [1, 1, 1, 0, 0]: return "ฉันคือ"
-        elif fingers == [0, 1, 0, 1, 0]: return "สบายดีไหม"
-        elif fingers == [0, 0, 1, 1, 1]: return "ขอบคุณ"  # Khob khun
-        elif fingers == [1, 1, 0, 0, 1]: return "ลาก่อน"  # La gon
-        elif fingers == [1, 0, 1, 1, 0]: return "สวัสดีตอนเช้า"
-        elif fingers == [0, 1, 1, 0, 1]: return "ราตรีสวัสดิ์"
-        elif fingers == [1, 0, 1, 0, 0]: return "ยินดีที่ได้รู้จัก"
-        elif fingers == [0, 1, 1, 1, 0]: return "สู้ต่อไป!"
-        elif fingers == [0, 0, 0, 0, 1]: return "ช่วยด้วย"  # Chuay duay
-        elif fingers == [1, 0, 0, 0, 0]: return "ใช่"  # Chai
-        elif fingers == [0, 1, 0, 0, 0]: return "ไม่"  # Mai
-        elif fingers == [0, 0, 1, 0, 0]: return "ขอโทษ"  # Kho thot
-        elif fingers == [0, 0, 0, 1, 0]: return "ฉันหิว"  # Chan hiu
+    # D - Telunjuk dan jempol membentuk lingkaran
+    if jari == [1, 1, 0, 0, 0]:
+        cek_lingkaran = hitung_jarak(landmarks[4], landmarks[12]) < 0.05
+        if cek_lingkaran:
+            return "D"
     
-    # 🇸🇦 Arabic
-    elif mode == "arabic":
-        if fingers == [1, 0, 0, 0, 1]: return f"اسمي {user_name}"  # Ismi {user_name}
-        elif fingers == [1, 1, 1, 1, 1]: return "مرحبا"  # Marhaban
-        elif fingers == [1, 1, 1, 0, 0]: return "أنا"  # Ana
-        elif fingers == [0, 1, 0, 1, 0]: return "كيف حالك"  # Kaifa haluk
-        elif fingers == [0, 0, 1, 1, 1]: return "شكرا"  # Shukran
-        elif fingers == [1, 1, 0, 0, 1]: return "مع السلامة"  # Ma'a as-salama
-        elif fingers == [0, 1, 1, 1, 0]: return "الله أكبر"  # Allahu Akbar
-        elif fingers == [1, 0, 1, 1, 0]: return "صباح الخير"  # Sabah al-khair
-        elif fingers == [0, 1, 1, 0, 1]: return "مساء الخير"  # Masaa al-khair
-        elif fingers == [1, 0, 1, 0, 0]: return "تبارك الله"  # Tabarakallah
-        elif fingers == [0, 0, 0, 0, 1]: return "مساعدة"  # Musaeada
-        elif fingers == [1, 0, 0, 0, 0]: return "نعم"  # Naam
-        elif fingers == [0, 1, 0, 0, 0]: return "لا"  # La
-        elif fingers == [0, 0, 1, 0, 0]: return "آسف"  # Aasif
-        elif fingers == [0, 0, 0, 1, 0]: return "أنا جائع"  # Ana jae
+    # E - Semua jari tertutup, jempol di depan
+    if jari == [0, 0, 0, 0, 0]:
+        jempol_depan = landmarks[4].x > landmarks[5].x and landmarks[4].x < landmarks[17].x
+        if jempol_depan:
+            return "E"
     
-    # 🇰🇷 Korean
-    elif mode == "korean":
-        if fingers == [1, 0, 0, 0, 1]: return f"제 이름은 {user_name}입니다"  # Je ireumeun {user_name} imnida
-        elif fingers == [1, 1, 1, 1, 1]: return "안녕하세요"  # Annyeonghaseyo
-        elif fingers == [1, 1, 1, 0, 0]: return "저는"  # Jeoneun
-        elif fingers == [0, 1, 0, 1, 0]: return "어떻게 지내세요"  # Eotteoke jinaeseyo
-        elif fingers == [0, 0, 1, 1, 1]: return "감사합니다"  # Gamsahamnida
-        elif fingers == [1, 1, 0, 0, 1]: return "안녕히 가세요"  # Annyeonghi gaseyo
-        elif fingers == [1, 0, 1, 1, 0]: return "좋은 아침입니다"  # Joeun achim imnida
-        elif fingers == [0, 1, 1, 0, 1]: return "안녕히 주무세요"  # Annyeonghi jumuseyo
-        elif fingers == [1, 0, 1, 0, 0]: return "만나서 반갑습니다"  # Mannaseo bangapseumnida
-        elif fingers == [0, 1, 1, 1, 0]: return "화이팅!"  # Hwaiting!
-        elif fingers == [0, 0, 0, 0, 1]: return "도와주세요"  # Dowajuseyo
-        elif fingers == [1, 0, 0, 0, 0]: return "네"  # Ne
-        elif fingers == [0, 1, 0, 0, 0]: return "아니요"  # Aniyo
-        elif fingers == [0, 0, 1, 0, 0]: return "미안합니다"  # Mianhamnida
-        elif fingers == [0, 0, 0, 1, 0]: return "배고파요"  # Baegopayo
+    # F - Jempol dan telunjuk membentuk lingkaran, jari lain terbuka
+    if jari == [0, 0, 1, 1, 1] or jari == [1, 0, 1, 1, 1]:
+        tanda_ok = hitung_jarak(landmarks[4], landmarks[8]) < 0.05
+        if tanda_ok:
+            return "F"
     
-    # 🇮🇳 Hindi
-    elif mode == "hindi":
-        if fingers == [1, 0, 0, 0, 1]: return f"मेरा नाम {user_name} है"  # Mera naam {user_name} hai
-        elif fingers == [1, 1, 1, 1, 1]: return "नमस्ते"  # Namaste
-        elif fingers == [1, 1, 1, 0, 0]: return "मैं"  # Main
-        elif fingers == [0, 1, 0, 1, 0]: return "आप कैसे हैं"  # Aap kaise hain
-        elif fingers == [0, 0, 1, 1, 1]: return "धन्यवाद"  # Dhanyavaad
-        elif fingers == [1, 1, 0, 0, 1]: return "अलविदा"  # Alvida
-        elif fingers == [1, 0, 1, 1, 0]: return "शुभ प्रभात"  # Shubh prabhaat
-        elif fingers == [0, 1, 1, 0, 1]: return "शुभ रात्रि"  # Shubh raatri
-        elif fingers == [1, 0, 1, 0, 0]: return "आपसे मिलकर खुशी हुई"  # Aapse milkar khushi hui
-        elif fingers == [0, 1, 1, 1, 0]: return "जारी रखो!"  # Jaari rakho!
-        elif fingers == [0, 0, 0, 0, 1]: return "मदद"  # Madad
-        elif fingers == [1, 0, 0, 0, 0]: return "हाँ"  # Haan
-        elif fingers == [0, 1, 0, 0, 0]: return "नहीं"  # Nahin
-        elif fingers == [0, 0, 1, 0, 0]: return "माफ़ कीजिए"  # Maaf kijiye
-        elif fingers == [0, 0, 0, 1, 0]: return "मुझे भूख लगी है"  # Mujhe bhookh lagi hai
+    # G - Telunjuk dan jempol horizontal menunjuk ke samping
+    if jari == [1, 1, 0, 0, 0]:
+        horizontal = abs(landmarks[8].y - landmarks[4].y) < 0.05
+        menunjuk_samping = abs(landmarks[8].x - landmarks[0].x) > 0.1
+        if horizontal and menunjuk_samping:
+            return "G"
+    
+    # H - Telunjuk dan jari tengah horizontal, berdekatan
+    if jari == [0, 1, 1, 0, 0]:
+        horizontal = abs(landmarks[8].y - landmarks[12].y) < 0.03
+        dekat = abs(landmarks[8].x - landmarks[12].x) < 0.03
+        if horizontal and dekat:
+            return "H"
+    
+    # I - Hanya kelingking terbuka
+    if jari == [0, 0, 0, 0, 1]:
+        lainnya_tertutup = all([
+            landmarks[8].y > landmarks[6].y,
+            landmarks[12].y > landmarks[10].y,
+            landmarks[16].y > landmarks[14].y
+        ])
+        if lainnya_tertutup:
+            return "I"
+    
+    # K - Telunjuk, jempol, jari tengah dengan sudut tertentu
+    if jari == [1, 1, 1, 0, 0]:
+        sudut_tengah = hitung_sudut(landmarks[12], landmarks[11], landmarks[9])
+        if 30 < sudut_tengah < 60:
+            return "K"
+    
+    # L - Jempol horizontal, telunjuk vertikal
+    if jari == [1, 1, 0, 0, 0]:
+        jempol_horizontal = abs(landmarks[4].y - landmarks[2].y) < 0.05
+        telunjuk_vertikal = landmarks[8].y < landmarks[6].y
+        if jempol_horizontal and telunjuk_vertikal:
+            return "L"
+    
+    # M - Tiga jari di atas jempol
+    if jari == [1, 0, 0, 0, 0]:
+        tiga_di_atas = all([
+            landmarks[8].y < landmarks[4].y,
+            landmarks[12].y < landmarks[4].y,
+            landmarks[16].y < landmarks[4].y
+        ])
+        if tiga_di_atas:
+            return "M"
+    
+    # N - Dua jari di atas jempol
+    if jari == [1, 0, 0, 0, 0]:
+        dua_di_atas = (landmarks[8].y < landmarks[4].y and 
+                       landmarks[12].y < landmarks[4].y and
+                       landmarks[16].y > landmarks[4].y)
+        if dua_di_atas:
+            return "N"
+    
+    # O - Semua jari membentuk lingkaran
+    if jari == [1, 1, 1, 1, 1]:
+        jarak_lingkaran = hitung_jarak(landmarks[4], landmarks[8])
+        if jarak_lingkaran < 0.06:
+            return "O"
+    
+    # P - Telunjuk, jempol, jari tengah menunjuk ke bawah
+    if jari == [1, 1, 1, 0, 0]:
+        menunjuk_bawah = landmarks[8].y > landmarks[5].y
+        if menunjuk_bawah:
+            return "P"
+    
+    # Q - Telunjuk dan jempol menunjuk ke bawah
+    if jari == [1, 1, 0, 0, 0]:
+        menunjuk_bawah = landmarks[8].y > landmarks[5].y
+        if menunjuk_bawah:
+            return "Q"
+    
+    # R - Telunjuk dan jari tengah bersilangan
+    if jari == [0, 1, 1, 0, 0]:
+        bersilang = abs(landmarks[8].x - landmarks[12].x) < 0.02
+        if bersilang:
+            return "R"
+    
+    # S - Kepalan dengan jempol di depan
+    if jari == [0, 0, 0, 0, 0]:
+        jempol_depan = landmarks[4].z < landmarks[8].z
+        if jempol_depan:
+            return "S"
+    
+    # T - Jempol di antara telunjuk dan jari tengah
+    if jari == [1, 0, 0, 0, 0]:
+        jempol_diantara = (landmarks[4].y > landmarks[8].y and 
+                           landmarks[4].y < landmarks[5].y)
+        if jempol_diantara:
+            return "T"
+    
+    # U - Telunjuk dan jari tengah berdekatan, vertikal
+    if jari == [0, 1, 1, 0, 0]:
+        bersama = abs(landmarks[8].x - landmarks[12].x) < 0.03
+        vertikal = landmarks[8].y < landmarks[6].y
+        if bersama and vertikal:
+            return "U"
+    
+    # V - Telunjuk dan jari tengah terpisah membentuk V
+    if jari == [0, 1, 1, 0, 0]:
+        terpisah = abs(landmarks[8].x - landmarks[12].x) > 0.05
+        if terpisah:
+            return "V"
+    
+    # W - Tiga jari (telunjuk, tengah, manis) terbuka
+    if jari == [0, 1, 1, 1, 0]:
+        semua_atas = all([
+            landmarks[8].y < landmarks[6].y,
+            landmarks[12].y < landmarks[10].y,
+            landmarks[16].y < landmarks[14].y
+        ])
+        if semua_atas:
+            return "W"
+    
+    # X - Telunjuk menekuk seperti kait
+    if jari == [0, 1, 0, 0, 0]:
+        menekuk = landmarks[8].y > landmarks[6].y
+        if menekuk:
+            return "X"
+    
+    # Y - Jempol dan kelingking terbuka
+    if jari == [1, 0, 0, 0, 1]:
+        kelingking_atas = landmarks[20].y < landmarks[18].y
+        jempol_keluar = landmarks[4].x < landmarks[2].x or landmarks[4].x > landmarks[17].x
+        if kelingking_atas and jempol_keluar:
+            return "Y"
+    
+    # Z - Telunjuk terbuka untuk menggambar Z
+    if jari == [0, 1, 0, 0, 0]:
+        telunjuk_terbuka = landmarks[8].y < landmarks[6].y
+        if telunjuk_terbuka:
+            return "Z"
     
     return "-"
 
+def tambah_huruf_ke_kata(huruf):
+    """Menambahkan huruf ke prediktor kata"""
+    global huruf_terdeteksi_terakhir, waktu_konfirmasi_huruf
+    
+    waktu_sekarang = time.time()
+    
+    if huruf == huruf_terdeteksi_terakhir:
+        if waktu_sekarang - waktu_konfirmasi_huruf >= durasi_konfirmasi_huruf:
+            prediktor_kata.tambah_huruf(huruf)
+            mungkin_bicara(huruf)
+            print(f"✅ Huruf ditambahkan: {huruf} | Kata: {prediktor_kata.ambil_kata_sekarang()}")
+            waktu_konfirmasi_huruf = waktu_sekarang + 2
+    else:
+        huruf_terdeteksi_terakhir = huruf
+        waktu_konfirmasi_huruf = waktu_sekarang
+
+# ===========================================
+# 🎯 Aplikasi Utama
+# ===========================================
 def main():
-    """Main entry: choose language, get user name, start speech worker and camera loop."""
-    global bahasa, mode, bendera, user_name
+    """Fungsi utama aplikasi"""
+    global nama_pengguna
 
-    # Pilih bahasa dan nama pengguna
-    bahasa, mode, bendera = pilih_bahasa()
-    print(f"🗣 Bahasa awal: {mode.capitalize()} {bendera}")
+    print("\n" + "="*60)
+    print("🤟 PENGENALAN BAHASA ISYARAT - PEMBUAT KATA & KALIMAT OTOMATIS")
+    print("="*60)
+    
+    input_pengguna = input("Masukkan nama Anda: ").strip()
+    if input_pengguna:
+        nama_pengguna = input_pengguna
+    print(f"👋 Halo {nama_pengguna}! Mari kita mulai...\n")
+    print("📝 Kontrol:")
+    print("  - Q: Keluar")
+    print("  - SPASI: Selesaikan kata & tambahkan ke kalimat")
+    print("  - TAB: Lengkapi otomatis dengan prediksi")
+    print("  - BACKSPACE: Hapus huruf terakhir")
+    print("  - DELETE: Hapus kata terakhir")
+    print("  - ENTER: Ucapkan kalimat dan simpan")
+    print("  - C: Bersihkan semua")
+    print("  - 1-5: Pilih prediksi kata\n")
 
-    user_input = input("Masukkan nama kamu: ").strip()
-    if user_input:
-        user_name = user_input
-    print(f"👋 Halo {user_name}! Mari mulai...")
+    thread_suara = threading.Thread(target=pekerja_suara, daemon=True)
+    thread_suara.start()
 
-    # Start speech worker thread
-    speech_thread = threading.Thread(target=speech_worker, daemon=True)
-    speech_thread.start()
-
-    # Buka kamera
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         print("❌ Error: Tidak dapat mengakses kamera")
         return
 
-    print("\n📸 Kamera aktif — tekan Q untuk keluar, B untuk ganti bahasa")
-    print("🤟 Tunjukkan gesture tangan di depan kamera...\n")
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
+    template_bg = buat_background_sekolah(1280, 720)
 
     try:
         while True:
             ret, frame = cap.read()
             if not ret:
-                print("❌ Error: Tidak dapat membaca frame dari kamera")
+                print("❌ Error: Tidak dapat membaca frame")
                 break
 
             frame = cv2.flip(frame, 1)
+            h, w, _ = frame.shape
+            
+            if template_bg.shape[:2] != (h, w):
+                background = cv2.resize(template_bg, (w, h))
+            else:
+                background = template_bg.copy()
+            
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             results = hands.process(rgb)
 
-            text = "-"
-            confidence = 0
+            alpha = 0.6
+            frame = cv2.addWeighted(frame, alpha, background, 1-alpha, 0)
 
+            huruf_terdeteksi = "-"
+            
             if results.multi_hand_landmarks:
-                for hand_landmarks in results.multi_hand_landmarks:
-                    mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
-                    fingers = get_finger_states(hand_landmarks)
-                    text = classify_letter(fingers)
+                for landmark_tangan in results.multi_hand_landmarks:
+                    mp_draw.draw_landmarks(
+                        frame, 
+                        landmark_tangan, 
+                        mp_hands.HAND_CONNECTIONS,
+                        mp_draw.DrawingSpec(color=(0, 255, 128), thickness=3, circle_radius=5),
+                        mp_draw.DrawingSpec(color=(255, 128, 0), thickness=3)
+                    )
+                    
+                    jari = ambil_status_jari(landmark_tangan)
+                    huruf_terdeteksi = klasifikasi_huruf(jari, landmark_tangan)
+                    
+                    if huruf_terdeteksi != "-":
+                        tambah_huruf_ke_kata(huruf_terdeteksi)
 
-                    # Tampilkan status jari di frame
-                    finger_names = ["Jempol", "Telunjuk", "Tengah", "Manis", "Kelingking"]
-                    for i, (name, state) in enumerate(zip(finger_names, fingers)):
-                        color = (0, 255, 0) if state == 1 else (0, 0, 255)
-                        cv2.putText(frame, f"{name}: {'Terbuka' if state == 1 else 'Tertutup'}",
-                                   (20, 150 + i*30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+            # Header
+            tambah_teks_dengan_background(frame, "PEMBUAT KATA & KALIMAT OTOMATIS", 
+                                          (w//2 - 350, 50), 1.2, (255, 255, 255), 
+                                          (255, 150, 50), 15, 3)
 
-            # Tampilkan teks terdeteksi
-            if text != "-":
-                cv2.putText(frame, f"Terdeteksi: {text}", (20, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 3)
-                maybe_speak(text)
-            else:
-                cv2.putText(frame, "Gesture tidak dikenali", (20, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+            # Kotak Huruf Terdeteksi
+            if huruf_terdeteksi != "-":
+                lebar_kotak, tinggi_kotak = 150, 150
+                x_kotak, y_kotak = w - lebar_kotak - 30, 100
+                
+                overlay = frame.copy()
+                cv2.rectangle(overlay, (x_kotak, y_kotak), 
+                            (x_kotak + lebar_kotak, y_kotak + tinggi_kotak), 
+                            (0, 255, 128), -1)
+                cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
+                cv2.rectangle(frame, (x_kotak, y_kotak), 
+                            (x_kotak + lebar_kotak, y_kotak + tinggi_kotak), 
+                            (255, 255, 255), 4)
+                
+                cv2.putText(frame, huruf_terdeteksi, (x_kotak + 30, y_kotak + 90), 
+                          cv2.FONT_HERSHEY_SIMPLEX, 3, (255, 255, 255), 6)
 
-            # Info bahasa dan pengguna
-            cv2.putText(frame, f"Bahasa: {mode.capitalize()} {bendera}", (20, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-            cv2.putText(frame, f"Pengguna: {user_name}", (20, 380), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-
-            # Petunjuk kontrol
-            cv2.putText(frame, "Q: Keluar  B: Ganti Bahasa", (20, 420), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
-
-            cv2.imshow("🤟 Pengenalan Bahasa Isyarat Multi-Bahasa", frame)
-
+            # Kotak Kata Saat Ini
+            kata_sekarang = prediktor_kata.ambil_kata_sekarang()
+            y_kata = 280
+            
+            overlay = frame.copy()
+            cv2.rectangle(overlay, (20, y_kata - 50), (w - 20, y_kata + 30), 
+                        (40, 40, 80), -1)
+            cv2.addWeighted(overlay, 0.85, frame, 0.15, 0, frame)
+            cv2.rectangle(frame, (20, y_kata - 50), (w - 20, y_kata + 30), 
+                        (100, 200, 255), 3)
+            
+            cv2.putText(frame, "KATA SAAT INI:", (30, y_kata - 20), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (100, 200, 255), 2)
+            
+            tampil_kata = kata_sekarang if kata_sekarang else "[mengetik...]"
+            cv2.putText(frame, tampil_kata, (30, y_kata + 10),
+                          cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 3)
+            # Kotak Prediksi Kata
+            prediksi = prediktor_kata.ambil_prediksi()
+            if prediksi:
+                y_prediksi = y_kata + 70
+                tambah_teks_dengan_background(frame, "PREDIKSI KATA:", 
+                                              (30, y_prediksi - 30), 0.7, (100, 200, 255), 
+                                              (40, 40, 80), 8, 2)
+                for i, kata_prediksi in enumerate(prediksi):
+                    teks_prediksi = f"{i+1}. {kata_prediksi}"
+                    tambah_teks_dengan_background(frame, teks_prediksi, 
+                                                  (50, y_prediksi + i*40), 0.7, (255, 255, 255), 
+                                                  (60, 60, 100), 6, 2)
+            # Kotak Kalimat Saat Ini
+            quote_kalimat = pembuat_kalimat.ambil_kalimat()
+            y_kalimat = h - 100
+            overlay = frame.copy()
+            cv2.rectangle(overlay, (20, y_kalimat - 50), (w - 20, y_kalimat + 30), 
+                        (80, 40, 40), -1)
+            cv2.addWeighted(overlay, 0.85, frame, 0.15, 0, frame)
+            cv2.rectangle(frame, (20, y_kalimat - 50), (w - 20, y_kalimat + 30), 
+                        (255, 180, 100), 3)
+            cv2.putText(frame, "KALIMAT SAAT INI:", (30, y_kalimat - 20),
+                          cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 180, 100), 2)
+            tampil_kalimat = quote_kalimat if quote_kalimat else "[kosong]"
+            cv2.putText(frame, tampil_kalimat, (30, y_kalimat + 10),
+                          cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 3)
+            cv2.imshow("Pengenalan Bahasa Isyarat - Pembuat Kata & Kalimat Otomatis", frame)
             key = cv2.waitKey(1) & 0xFF
-            if key == ord('q'):
-                break
-            elif key == ord('b'):
-                bahasa, mode, bendera = pilih_bahasa()
-                speak_text = f"Bahasa diubah ke {mode}"
-                maybe_speak(speak_text)
-                print(f"🔄 Bahasa diubah ke {mode.capitalize()} {bendera}")
-
-    finally:
-        # Cleanup
-        cap.release()
-        cv2.destroyAllWindows()
-        # Signal speech worker to stop
-        speech_queue.put(None)
-        speech_thread.join()
-
-        # Hapus semua file cache yang tersisa
-        for file in os.listdir():
-            if file.startswith("cache_"):
-                try:
-                    os.remove(file)
-                    print(f"🗑 Cache dibersihkan: {file}")
-                except Exception:
-                    pass
-
-        print("\n👋 Aplikasi ditutup. Terima kasih!")
-
-
-if __name__ == "__main__":
-    main()
